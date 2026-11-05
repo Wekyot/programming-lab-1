@@ -11,6 +11,7 @@
 
 int main(int argc, char* argv[]){
     setlocale(LC_ALL, ".UTF-8");
+    setlocale(LC_NUMERIC, "C");
 
 #ifdef _WIN32    
     SetConsoleCP(65001);

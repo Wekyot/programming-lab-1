@@ -25,11 +25,11 @@ int read_one_line(FILE* input, char** buffer, int* cap){
 
 State field_state(char* buf){
     if (buf[0] == '\0'){
-        return STATE_EMPTY;
+        return STATE_NULL;
     }
 
     char c;
-    State result = STATE_NONE;
+    State result = STATE_NULL;
 
     char* buf_ptr = buf;
 
@@ -42,7 +42,7 @@ State field_state(char* buf){
         }
 
         switch (result){
-            case STATE_NONE:
+            case STATE_NULL:
                 if (c == '+' || c == '-') {
                     result = STATE_SIGN;
                 } else if (isdigit(c)) {
@@ -92,75 +92,134 @@ State field_state(char* buf){
         }
     }
 
-    if (result == STATE_INT && (strlen(buf) > 19 || (strlen(buf) == 19 && strcmp(buf, "9223372036854775807") > 0))){
+    if (result == STATE_INT && !is_valid_long_long(buf)){
         result = STATE_STRING;
     }
     else if (result == STATE_DOT){
+        result = STATE_STRING;
+    }
+    else if (result == STATE_DOUBLE && !is_valid_double(buf)){
         result = STATE_STRING;
     }
 
     return result;
 }
 
-int parse_one_field(const char** src, char* buf, size_t max_len, int is_header){
+int parse_one_field(const char** src, char* buf, size_t max_len, State* initial_state){
     char c;
-    int exit_flag = 0;
     int outer_quote_flag = 0;
-    int was_quote_flag = 0;
 
     int cur_len = 0;
 
-    int ret_reason;
-
-    while (!exit_flag){
-        c = (**src);
+    while (**src == ' ' || **src == '\t'){
         (*src)++;
-
-        switch (c){
-            case '\n': case '\0':
-                buf[cur_len] = '\0';
-                ret_reason = END_BY_LINE;
-                exit_flag = 1;
-                break;
-
-            case ',':
-                if (was_quote_flag || !outer_quote_flag){
-                    outer_quote_flag = 0;
-                    was_quote_flag = 0;
-
-                    buf[cur_len] = '\0';
-                    ret_reason = END_BY_COMMA;
-                    exit_flag = 1;
-                }
-                else{
-                    buf[cur_len] = c;
-                    cur_len++;
-                }
-                break;
-
-            case '"':
-                if (!outer_quote_flag){
-                    outer_quote_flag = 1;
-                    was_quote_flag = 0;
-                }
-                else{
-                    if (!was_quote_flag){
-                        was_quote_flag = 1;
-                    }
-                    else{
-                        buf[cur_len] = c;
-                        cur_len++;
-                        was_quote_flag = 0;
-                    }
-                }
-                break;
-
-            default:
-                buf[cur_len] = c;
-                cur_len++;
-                break;
-        }
+    }
+    
+    if (**src == '"'){
+        outer_quote_flag = 1;
+        (*src)++;
     }
 
-    return ret_reason;
+    while (1){
+        c = **(src);
+
+        if ((size_t)cur_len + 1 >= max_len) {
+            buf[cur_len] = '\0';
+            return END_BY_ERROR_OVERFLOW; 
+        }
+
+        if (outer_quote_flag){
+            switch (c){
+                case '\0': case '\n':
+                    buf[cur_len] = '\0';
+                    return END_BY_ERROR_QUOTE;
+                
+                case '"':
+                    char next_c = *(*src + 1);
+
+                    if (next_c == '"'){
+                        buf[cur_len++] = '"';
+                        (*src)+=2;
+                        break;
+                    }
+
+                    const char* forward_ptr = *src + 1;
+                    while (*forward_ptr == ' ' || *forward_ptr == '\t') {
+                        forward_ptr++;
+                    }
+
+                    next_c = *forward_ptr;
+                    
+                    switch (next_c){
+                        case ',':
+                            buf[cur_len] = '\0';
+                            *src = forward_ptr + 1;
+
+                            if (initial_state){
+                                if (cur_len == 0) {
+                                    *initial_state = STATE_STRING;
+                                }
+                                else {
+                                    *initial_state = STATE_NULL;
+                                }
+                            }
+                            
+                            return END_BY_COMMA;
+                        
+                        case '\0': case '\n':
+                            buf[cur_len] = '\0';
+                            *src = forward_ptr;
+
+                            if (initial_state){
+                                if (cur_len == 0) {
+                                    *initial_state = STATE_STRING;
+                                }
+                                else {
+                                    *initial_state = STATE_NULL;
+                                }
+                            }
+                            
+                            return END_BY_LINE;
+
+                        default:
+                            buf[cur_len] = '\0';
+                            return END_BY_ERROR_QUOTE;
+                    }
+                    break;
+
+                default:
+                    buf[cur_len++] = c;
+                    (*src)++;
+                    break;
+            }
+        }
+        else {
+            switch (c){
+                case ' ': case '\t':
+                    (*src)++;
+                    continue;
+
+                case '\n': case '\0':
+                    buf[cur_len] = '\0';
+                    if (c == '\n') {
+                        (*src)++;
+                    }
+                    return END_BY_LINE;
+
+                case ',':
+                    buf[cur_len] = '\0';
+                    (*src)++;
+                    return END_BY_COMMA;
+
+                case '"':
+                    buf[cur_len] = '\0';
+                    return END_BY_ERROR_QUOTE;
+
+                default:
+                    buf[cur_len++] = c;
+                    (*src)++;
+                    break;
+            }
+        }
+    }
 }

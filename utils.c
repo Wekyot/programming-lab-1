@@ -56,8 +56,27 @@ void free_but_better(void* ptr){
     }
 }
 
+char* state_to_str(State state){
+    switch (state){
+        case STATE_NULL:
+            return "NULL";
+            
+        case STATE_INT:
+            return "INT";
+            
+        case STATE_DOUBLE:
+            return "DOUBLE";
+            
+        case STATE_STRING:
+            return "STRING";
+    }
+}
+
 void fprintf_state(FILE* file, State state){
     switch (state){
+        case STATE_NULL:
+            fprintf(file, "NULL");
+            break;
         case STATE_INT:
             fprintf(file, "INT");
             break;
@@ -68,4 +87,74 @@ void fprintf_state(FILE* file, State state){
             fprintf(file, "STRING");
             break;
     }
+}
+
+void print_column_name(FILE* stream, const char* name){
+    fprintf(stream, "\"");
+    while (*name) {
+        if (*name == '"') {
+            fprintf(stream, "\"\""); 
+        } else {
+            fputc(*name, stream);
+        }
+        name++;
+    }
+    fprintf(stream, "\" ");
+}
+
+int is_valid_long_long(const char* buf){
+    char* endptr;
+
+    errno = 0;
+
+    strtoll(buf, &endptr, 10);
+
+    if (errno == ERANGE){
+        return 0;
+    }
+    
+    return 1;
+}
+
+int is_valid_double(const char* buf){
+    char* endptr;
+
+    errno = 0;
+
+    double val = strtod(buf, &endptr);
+
+    if (errno == ERANGE && (val == HUGE_VAL || val == -HUGE_VAL)) {
+        return 0;
+    }
+    
+    if (!isfinite(val)) {
+        return 0;
+    }
+    
+    return 1;
+}
+
+int len_of_int(long long int n){
+    if (n != 0){
+        return floor(log10(abs(n))) + 1;
+    }
+    else return 1;
+}
+
+void print_char_line(FILE* f, char c, int count, int need_enter){
+    for (int i = 0;i < count;i++)
+        fputc(c, f);
+
+    if (need_enter){
+        fputc('\n',f);
+    }
+}
+
+void print_table(FILE* f, const int* widths){
+    fputc('+',f);
+    for (int i = 0; i < 10;i++){
+        print_char_line(f, '-', widths[i], 0);
+        fprintf(f, "+");
+    }
+    fputc('\n',f);
 }
