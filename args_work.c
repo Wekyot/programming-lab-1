@@ -160,6 +160,52 @@ static void print_integer_mean(Int128 sum, int count) {
            (unsigned long long)fractional);
 }
 
+static void format_integer_mean(
+    char* buffer,
+    size_t size,
+    Int128 sum,
+    int count
+) {
+    if (count <= 0) {
+        snprintf(buffer, size, "0.000000");
+        return;
+    }
+
+    int negative = sum.high < 0;
+
+    if (negative) {
+        sum.low = ~sum.low + 1;
+        sum.high = (int64_t)(~(uint64_t)sum.high + (sum.low == 0));
+    }
+
+    uint32_t remainder;
+    Int128 quotient = divide_uint128(
+        sum,
+        (uint32_t)count,
+        &remainder
+    );
+
+    unsigned long long whole = (unsigned long long)quotient.low;
+
+    uint64_t fractional =
+        ((uint64_t)remainder * 1000000 + (uint32_t)count / 2)
+        / (uint32_t)count;
+
+    if (fractional == 1000000) {
+        whole++;
+        fractional = 0;
+    }
+
+    snprintf(
+        buffer,
+        size,
+        "%s%llu.%06llu",
+        negative && (whole != 0 || fractional != 0) ? "-" : "",
+        whole,
+        (unsigned long long)fractional
+    );
+}
+
 static void format_numeric_extreme(
     char* buffer,
     size_t size,
@@ -275,7 +321,9 @@ static void format_report_cell(
                 );
             }
             else if (col->column_type == STATE_INT) {
-                print_integer_mean(
+                format_integer_mean(
+                    buffer,
+                    size,
                     col->INT.integer_sum,
                     col->STRING.valid_count
                 );
@@ -827,14 +875,26 @@ int print_report_output(char* in_f, char* out_f, const Table* table){
         widths[i] = strlen(headers[i]);
     }
 
-    char cell[256];
+    int max_len = BASE_ARR_SIZE * 8192;
+    char* cell = malloc(max_len);
+    if (!cell){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
 
     for (int i = 0; i < table->column_count; i++) {
-        snprintf(cell, sizeof(cell), "%d", i);
+        snprintf(cell, max_len, "%d", i);
         widths[REPORT_INDEX] =
             __max(widths[REPORT_INDEX], strlen(cell));
 
         for (int j = REPORT_NAME; j < REPORT_COLUMN_COUNT; j++) {
+            if (j == REPORT_NAME) {
+                widths[j] = __max(
+                    widths[j],
+                    strlen(table->columns[i].name)
+                );
+                continue;
+            }
+            
             format_report_cell(
                 cell,
                 sizeof(cell),
@@ -846,7 +906,88 @@ int print_report_output(char* in_f, char* out_f, const Table* table){
         }
     }
 
+    fprintf(out, "CSV ANALYSIS REPORT\n\n");
+    fprintf(out, "File: %s\n", in_f);
+    fprintf(out, "Rows: %d\n", table->row_count);
+    fprintf(out, "Columns: %d\n\n", table->column_count);
+
+    fprintf(out, "Column summary:\n\n");
+
+    print_report_border(out, widths);
+    print_report_row(out, headers, widths);
+    print_report_border(out, widths);
+
+    for (int i = 0; i < table->column_count; i++) {
+        char formatted[REPORT_COLUMN_COUNT][512];
+        const char* cells[REPORT_COLUMN_COUNT];
+
+        snprintf(
+            formatted[REPORT_INDEX],
+            sizeof(formatted[REPORT_INDEX]),
+            "%d",
+            i
+        );
+
+        cells[REPORT_INDEX] = formatted[REPORT_INDEX];
+
+        for (int j = REPORT_NAME; j < REPORT_COLUMN_COUNT; j++) {
+            if (j == REPORT_NAME) {
+                cells[j] = table->columns[i].name;
+            }
+            else {
+                format_report_cell(
+                    formatted[j],
+                    sizeof(formatted[j]),
+                    &table->columns[i],
+                    j
+                );
+
+                cells[j] = formatted[j];
+            }
+        }
+
+        print_report_row(out, cells, widths);
+    }
+
+    print_report_border(out, widths);
+
+    fprintf(out, "\nAdditional metrics:\n\n");
+
+    for (int i = 0; i < table->column_count; i++) {
+        const Table_Column* col = &table->columns[i];
+
+        fprintf(out, "Column %d ", i);
+        print_column_name(out, col->name);
+        fprintf(out, ":\n");
+
+        switch (col->column_type) {
+            case STATE_NULL:
+                fprintf(out, "Empty columns: %d\n", table->row_count);
+                break;
+
+            case STATE_INT:
+                fprintf(out, "Even values: %d\n", col->INT.even);
+                break;
+
+            case STATE_DOUBLE:
+                fprintf(out, "Integer-valued numbers: %d\n", col->DOUBLE.integer);
+                break;
+
+            case STATE_STRING:
+                fprintf(out, "Empty strings: %d\n", col->STRING.empty);
+                break;
+        }
+
+        fprintf(out, "\n");
+    }
+
+    if (ferror(out)) {
+        fclose(out);
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
+
     fclose(out);
+    free_but_better(cell);
 
     return FUNC_RETURN_SUCCESS;
 }
