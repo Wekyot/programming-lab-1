@@ -18,6 +18,13 @@ enum {
     END_BY_ERROR_OVERFLOW
 };
 
+#include <stdint.h>
+
+typedef struct {
+    uint64_t low;
+    int64_t high;
+} Int128;
+
 typedef struct {
     char* name;
     State column_type;
@@ -26,14 +33,16 @@ typedef struct {
         long long min;
         long long max;
         int even;
+        Int128 integer_sum;
     } INT;
     struct{
         double min;
         double max;
-        double mean;
+        long double mean;
         int positive;
         int negative;
         int integer;
+        double double_sum;
     } DOUBLE;
     struct{
         int nulls;

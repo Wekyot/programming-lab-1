@@ -69,6 +69,97 @@ static void print_numeric_extreme(const Table_Column* col, int find_min, int wit
     }
 }
 
+static void add_int128(Int128* sum, long long value) {
+    uint64_t old_low = sum->low;
+
+    sum->low += (uint64_t)value;
+    sum->high += (value < 0 ? -1 : 0);
+
+    if (sum->low < old_low) {
+        sum->high++;
+    }
+}
+
+static double int128_to_double(Int128 sum) {
+    int negative = sum.high < 0;
+
+    if (negative) {
+        sum.low = ~sum.low + 1;
+        sum.high = ~sum.high + (sum.low == 0);
+    }
+
+    double result =
+        (double)sum.high * 18446744073709551616.0 +
+        (double)sum.low;
+
+    return negative ? -result : result;
+}
+
+static Int128 divide_uint128(Int128 value, uint32_t divisor, uint32_t* remainder) {
+    Int128 quotient = {0, 0};
+    uint64_t rem = 0;
+
+    for (int i = 127; i >= 0; i--) {
+        uint64_t bit;
+
+        if (i >= 64) {
+            bit = (value.high >> (i - 64)) & 1ULL;
+        } else {
+            bit = (value.low >> i) & 1ULL;
+        }
+
+        rem = rem * 2 + bit;
+
+        if (rem >= divisor) {
+            rem -= divisor;
+
+            if (i >= 64) {
+                quotient.high |= (int64_t)(1ULL << (i - 64));
+            } else {
+                quotient.low |= 1ULL << i;
+            }
+        }
+    }
+
+    *remainder = (uint32_t)rem;
+    return quotient;
+}
+
+static void print_integer_mean(Int128 sum, int count) {
+    if (count <= 0) {
+        printf("0.000000");
+        return;
+    }
+
+    int negative = sum.high < 0;
+
+    if (negative) {
+        sum.low = ~sum.low + 1;
+        sum.high = (int64_t)(~(uint64_t)sum.high + (sum.low == 0));
+    }
+
+    uint32_t remainder;
+    Int128 quotient = divide_uint128(sum, (uint32_t)count, &remainder);
+
+    unsigned long long whole = (unsigned long long)quotient.low;
+
+    uint64_t fractional =
+        ((uint64_t)remainder * 1000000 + (uint32_t)count / 2)
+        / (uint32_t)count;
+
+    if (fractional == 1000000) {
+        whole++;
+        fractional = 0;
+    }
+
+    if (negative && (whole != 0 || fractional != 0)) {
+        printf("-");
+    }
+
+    printf("%llu.%06llu", whole,
+           (unsigned long long)fractional);
+}
+
 int parse_args(int argc, char* argv[]){
     if (argc < 2){
         fprintf(stderr, "Вы запустили команду без аргументов. Попробуйте csvstat --help\n");
@@ -373,8 +464,14 @@ void handle_cell_for_stats(Table_Column* col, const char* field_buf, State field
                 (*col).INT.even++;
             }
 
+            add_int128(&col->INT.integer_sum, num);
+            // проваливаемся
+
         case STATE_DOUBLE:
-            double val = strtod(field_buf, &end_ptr);
+            long double val = field_t == STATE_INT
+                ? (long double)strtoll(field_buf, NULL, 10)
+                : (long double)strtod(field_buf, NULL);
+
             if (field_t == STATE_DOUBLE){
                 if (val > (*col).DOUBLE.max){
                     (*col).DOUBLE.max = val;
@@ -382,6 +479,8 @@ void handle_cell_for_stats(Table_Column* col, const char* field_buf, State field
                 if (val < (*col).DOUBLE.min){
                     (*col).DOUBLE.min = val;
                 }
+
+                col->DOUBLE.double_sum += val;
             }
 
             (*col).DOUBLE.mean = (*col).DOUBLE.mean + (val - (*col).DOUBLE.mean)/col->STRING.valid_count;
@@ -396,6 +495,8 @@ void handle_cell_for_stats(Table_Column* col, const char* field_buf, State field
             else if (val < 0.0){
                 col->DOUBLE.negative++;
             }
+
+            // проваливаемся
 
         case STATE_STRING:
             int cur_len = strlen(field_buf);
@@ -421,9 +522,11 @@ void init_column_stats(Table_Column* col, const char* header_name){
     col->name = strdup(header_name);
     col->column_type = STATE_NULL;
 
-    col->INT.max = LONG_LONG_MIN;
-    col->INT.min = LONG_LONG_MAX;
+    col->INT.max = LLONG_MIN;
+    col->INT.min = LLONG_MAX;
     col->INT.even = 0;
+    col->INT.integer_sum.high = 0;
+    col->INT.integer_sum.low = 0;
 
     col->DOUBLE.integer = 0;
     col->DOUBLE.max = -DBL_MAX;
@@ -431,6 +534,7 @@ void init_column_stats(Table_Column* col, const char* header_name){
     col->DOUBLE.mean = 0.0;
     col->DOUBLE.positive = 0;
     col->DOUBLE.negative = 0;
+    col->DOUBLE.double_sum = 0;
 
     col->STRING.empty = 0;
     col->STRING.max_length = 0;
@@ -476,8 +580,13 @@ void print_stats_output(const Table* table){
                 printf("\nmax ");
                 print_numeric_extreme(&table->columns[i], 0, 0);
 
-                printf("\nmean %.6lf\npositive %d\nnegative %d\neven %d\n",
-                    table->columns[i].DOUBLE.mean,
+                printf("\nmean ");
+                print_integer_mean(
+                    table->columns[i].INT.integer_sum,
+                    table->columns[i].STRING.valid_count
+                );
+
+                printf("\npositive %d\nnegative %d\neven %d\n",
                     table->columns[i].DOUBLE.positive,
                     table->columns[i].DOUBLE.negative,
                     table->columns[i].INT.even);
@@ -490,8 +599,11 @@ void print_stats_output(const Table* table){
                 printf("\nmax ");
                 print_numeric_extreme(&table->columns[i], 0, 1);
 
-                printf("\nmean %.6lf\npositive %d\nnegative %d\ninteger %d\n",
-                    table->columns[i].DOUBLE.mean,
+                double mean = (int128_to_double(table->columns[i].INT.integer_sum) + table->columns[i].DOUBLE.double_sum) / table->columns[i].STRING.valid_count;
+
+                printf("\nmean %.6lf", mean);
+
+                printf("\npositive %d\nnegative %d\ninteger %d\n",
                     table->columns[i].DOUBLE.positive,
                     table->columns[i].DOUBLE.negative,
                     table->columns[i].DOUBLE.integer);
