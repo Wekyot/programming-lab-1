@@ -1,8 +1,73 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #include "args_work.h"
+
+static int compare_long_long_double(long long i, double d) {
+    if (d < -0x1p63) {
+        return 1;
+    }
+
+    if (d >= 0x1p63) {
+        return -1;
+    }
+
+    long long whole = (long long)d;
+
+    if (i < whole) {
+        return -1;
+    }
+    if (i > whole) {
+        return 1;
+    }
+
+    double fraction = d - (double)whole;
+
+    if (fraction > 0.0) {
+        return -1;
+    }
+    if (fraction < 0.0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void print_numeric_extreme(const Table_Column* col, int find_min, int with_decimal) {
+    int has_int = col->INT.min <= col->INT.max;
+    int has_double = col->DOUBLE.min <= col->DOUBLE.max;
+
+    int use_int;
+
+    if (!has_double) {
+        use_int = 1;
+    }
+    else if (!has_int) {
+        use_int = 0;
+    }
+    else {
+        long long int_value = find_min ? col->INT.min : col->INT.max;
+        double double_value = find_min ? col->DOUBLE.min : col->DOUBLE.max;
+
+        int comparison = compare_long_long_double(int_value, double_value);
+
+        use_int = find_min ? comparison <= 0 : comparison >= 0;
+    }
+
+    if (use_int) {
+        if (with_decimal) {
+            printf("%lld.000000", find_min ? col->INT.min : col->INT.max);
+        }
+        else {
+            printf("%lld", find_min ? col->INT.min : col->INT.max);
+        }
+    }
+    else {
+        printf("%.6lf", find_min ? col->DOUBLE.min : col->DOUBLE.max);
+    }
+}
 
 int parse_args(int argc, char* argv[]){
     if (argc < 2){
@@ -238,7 +303,7 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
             }
 
             if (column_id >= table->column_count){
-                fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d лишние столбцы.\n",f_name,column_id);
+                fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d лишние столбцы.\n",f_name,table->row_count);
                 return_reason = FUNC_RETURN_RUNTIME_ERROR;
                 goto cleanup;
             }
@@ -256,7 +321,7 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
         }
 
         if (column_id < table->column_count){
-                fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d недостаточно столбцов.\n",f_name,column_id);
+                fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d недостаточно столбцов.\n",f_name,table->row_count);
                 return_reason = FUNC_RETURN_RUNTIME_ERROR;
                 goto cleanup;
         }
@@ -295,22 +360,30 @@ void handle_cell_for_stats(Table_Column* col, const char* field_buf, State field
     }
 
     char* end_ptr;
-    switch ((*col).column_type){
+    switch (field_t){
         case STATE_INT:
             long long int num = strtoll(field_buf, &end_ptr, 10);
+            if (num < col->INT.min) {
+                col->INT.min = num;
+            }
+            if (num > col->INT.max) {
+                col->INT.max = num;
+            }
             if (num % 2 == 0){
                 (*col).INT.even++;
             }
 
         case STATE_DOUBLE:
             double val = strtod(field_buf, &end_ptr);
-            if (val > (*col).DOUBLE.max){
-                (*col).DOUBLE.max = val;
+            if (field_t == STATE_DOUBLE){
+                if (val > (*col).DOUBLE.max){
+                    (*col).DOUBLE.max = val;
+                }
+                if (val < (*col).DOUBLE.min){
+                    (*col).DOUBLE.min = val;
+                }
             }
-            if (val < (*col).DOUBLE.min){
-                (*col).DOUBLE.min = val;
-            }
-            
+
             (*col).DOUBLE.mean = (*col).DOUBLE.mean + (val - (*col).DOUBLE.mean)/col->STRING.valid_count;
 
             if (val == floor(val)){
@@ -347,6 +420,9 @@ void handle_cell_for_stats(Table_Column* col, const char* field_buf, State field
 void init_column_stats(Table_Column* col, const char* header_name){
     col->name = strdup(header_name);
     col->column_type = STATE_NULL;
+
+    col->INT.max = LONG_LONG_MIN;
+    col->INT.min = LONG_LONG_MAX;
     col->INT.even = 0;
 
     col->DOUBLE.integer = 0;
@@ -394,11 +470,31 @@ void print_stats_output(const Table* table){
                 break;
             
             case STATE_INT:
-                printf("min %d\nmax %d\nmean %.6lf\npositive %d\nnegative %d\neven %d\n",(int) table->columns[i].DOUBLE.min, (int) table->columns[i].DOUBLE.max, table->columns[i].DOUBLE.mean, table->columns[i].DOUBLE.positive, table->columns[i].DOUBLE.negative, table->columns[i].INT.even);
+                printf("min ");
+                print_numeric_extreme(&table->columns[i], 1, 0);
+
+                printf("\nmax ");
+                print_numeric_extreme(&table->columns[i], 0, 0);
+
+                printf("\nmean %.6lf\npositive %d\nnegative %d\neven %d\n",
+                    table->columns[i].DOUBLE.mean,
+                    table->columns[i].DOUBLE.positive,
+                    table->columns[i].DOUBLE.negative,
+                    table->columns[i].INT.even);
                 break;
 
             case STATE_DOUBLE:
-                printf("min %.6lf\nmax %.6lf\nmean %.6lf\npositive %d\nnegative %d\ninteger %d\n",table->columns[i].DOUBLE.min, table->columns[i].DOUBLE.max, table->columns[i].DOUBLE.mean, table->columns[i].DOUBLE.positive, table->columns[i].DOUBLE.negative, table->columns[i].DOUBLE.integer);
+                printf("min ");
+                print_numeric_extreme(&table->columns[i], 1, 1);
+
+                printf("\nmax ");
+                print_numeric_extreme(&table->columns[i], 0, 1);
+
+                printf("\nmean %.6lf\npositive %d\nnegative %d\ninteger %d\n",
+                    table->columns[i].DOUBLE.mean,
+                    table->columns[i].DOUBLE.positive,
+                    table->columns[i].DOUBLE.negative,
+                    table->columns[i].DOUBLE.integer);
                 break;
             
             case STATE_STRING:

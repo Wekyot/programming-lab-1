@@ -28,5 +28,8 @@ int main(int argc, char* argv[]){
         return 1;
     case FUNC_RETURN_ARGS_ERROR:
         return 2;
+
+    default:
+        return 1;
     }
 }

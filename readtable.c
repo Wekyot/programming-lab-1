@@ -57,7 +57,7 @@ State field_state(char* buf){
             case STATE_NULL:
                 if (c == '+' || c == '-') {
                     result = STATE_SIGN;
-                } else if (isdigit(c)) {
+                } else if (isdigit((unsigned char) c)) {
                     result = STATE_INT;
                 } else {
                     result = STATE_STRING;
@@ -65,7 +65,7 @@ State field_state(char* buf){
                 break;
 
             case STATE_SIGN:
-                if (isdigit(c)) {
+                if (isdigit((unsigned char) c)) {
                     result = STATE_INT;
                 } else {
                     result = STATE_STRING;
@@ -83,7 +83,7 @@ State field_state(char* buf){
                 break;
 
             case STATE_DOT:
-                if (isdigit(c)) {
+                if (isdigit((unsigned char) c)) {
                     result = STATE_DOUBLE;
                 }
                 else {
@@ -92,7 +92,7 @@ State field_state(char* buf){
                 break;
 
             case STATE_DOUBLE:
-                if (isdigit(c)) {
+                if (isdigit((unsigned char) c)) {
                     result = STATE_DOUBLE;
                 } else {
                     result = STATE_STRING;

@@ -23,6 +23,8 @@ typedef struct {
     State column_type;
 
     struct{
+        long long min;
+        long long max;
         int even;
     } INT;
     struct{

@@ -73,7 +73,9 @@ int is_valid_double(const char* buf){
 
     double val = strtod(buf, &endptr);
 
-    if (errno == ERANGE && (val == HUGE_VAL || val == -HUGE_VAL) || endptr == buf || *endptr != '\0') {
+    if ((errno == ERANGE && (val == HUGE_VAL || val == -HUGE_VAL))
+        || endptr == buf
+        || *endptr != '\0') {
         return 0;
     }
     
