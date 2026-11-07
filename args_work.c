@@ -410,6 +410,9 @@ int parse_args(int argc, char* argv[]){
     }
     else if (!strncmp(argv[1],"report",7)){
         if (argc == 4){
+            if (!strcmp(argv[2],argv[3])){
+                fprintf(stderr, "Названия входного и выходного файла совпадают. Это перезапишет входной файл. Мы с этим ничего не сделаем, живите в этом мире, который вы же и создали\n");
+            }
             return report(argv[2],argv[3]);
         }
         else {
@@ -890,7 +893,7 @@ int print_report_output(char* in_f, char* out_f, const Table* table) {
             goto cleanup;
         }
 
-        widths[REPORT_INDEX] = __max(
+        widths[REPORT_INDEX] = our_max(
             widths[REPORT_INDEX],
             (int)strlen(index)
         );
@@ -905,7 +908,7 @@ int print_report_output(char* in_f, char* out_f, const Table* table) {
                 goto cleanup;
             }
 
-            widths[j] = __max(widths[j], (int)strlen(cell));
+            widths[j] = our_max(widths[j], (int)strlen(cell));
             free(cell);
         }
     }

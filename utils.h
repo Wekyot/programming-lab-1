@@ -11,6 +11,8 @@ enum {
     FUNC_RETURN_ARGS_ERROR = 3
 };
 
+#define our_max(a,b) (((a) > (b)) ? (a) : (b));
+
 #define BASE_ARR_SIZE 128
 #define LEN_BLOCK 128
 
