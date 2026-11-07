@@ -2,8 +2,36 @@
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <stdarg.h>
 
 #include "args_work.h"
+
+static char* format_alloc(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    va_list args_copy;
+    va_copy(args_copy, args);
+
+    int length = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    if (length < 0) {
+        va_end(args_copy);
+        return NULL;
+    }
+
+    char* buffer = malloc((size_t)length + 1);
+    if (!buffer) {
+        va_end(args_copy);
+        return NULL;
+    }
+
+    vsnprintf(buffer, (size_t)length + 1, format, args_copy);
+    va_end(args_copy);
+
+    return buffer;
+}
 
 static int compare_long_long_double(long long i, double d) {
     if (d < -0x1p63) {
@@ -160,15 +188,9 @@ static void print_integer_mean(Int128 sum, int count) {
            (unsigned long long)fractional);
 }
 
-static void format_integer_mean(
-    char* buffer,
-    size_t size,
-    Int128 sum,
-    int count
-) {
+static char* format_integer_mean(Int128 sum, int count) {
     if (count <= 0) {
-        snprintf(buffer, size, "0.000000");
-        return;
+        return format_alloc("0.000000");
     }
 
     int negative = sum.high < 0;
@@ -196,9 +218,7 @@ static void format_integer_mean(
         fractional = 0;
     }
 
-    snprintf(
-        buffer,
-        size,
+    return format_alloc(
         "%s%llu.%06llu",
         negative && (whole != 0 || fractional != 0) ? "-" : "",
         whole,
@@ -206,9 +226,7 @@ static void format_integer_mean(
     );
 }
 
-static void format_numeric_extreme(
-    char* buffer,
-    size_t size,
+static char* format_numeric_extreme(
     const Table_Column* col,
     int find_min
 ) {
@@ -243,121 +261,116 @@ static void format_numeric_extreme(
     }
 
     if (use_int) {
-        snprintf(
-            buffer,
-            size,
-            col->column_type == STATE_DOUBLE ? "%lld.000000" : "%lld",
+        return format_alloc(
+            col->column_type == STATE_DOUBLE
+                ? "%lld.000000"
+                : "%lld",
             find_min ? col->INT.min : col->INT.max
         );
     }
-    else {
-        snprintf(
-            buffer,
-            size,
-            "%.6f",
-            find_min ? col->DOUBLE.min : col->DOUBLE.max
-        );
-    }
+
+    return format_alloc(
+        "%.6f",
+        find_min ? col->DOUBLE.min : col->DOUBLE.max
+    );
 }
 
-static void format_report_cell(
-    char* buffer,
-    size_t size,
+static char* format_report_cell(
     const Table_Column* col,
     int column
 ) {
     switch (column) {
         case REPORT_NAME:
-            snprintf(buffer, size, "%s", col->name);
-            break;
+            return format_alloc("%s", col->name);
 
         case REPORT_TYPE:
-            snprintf(buffer, size, "%s", state_to_str(col->column_type));
-            break;
+            return format_alloc("%s", state_to_str(col->column_type));
 
         case REPORT_NULLS:
-            snprintf(buffer, size, "%d", col->STRING.nulls);
-            break;
+            return format_alloc("%d", col->STRING.nulls);
 
         case REPORT_VALID:
-            snprintf(buffer, size, "%d", col->STRING.valid_count);
-            break;
+            return format_alloc("%d", col->STRING.valid_count);
 
         case REPORT_MIN:
         case REPORT_MAX:
             if (col->column_type == STATE_NULL) {
-                snprintf(buffer, size, "N/A");
+                return format_alloc("N/A");
             }
-            else if (col->column_type == STATE_STRING) {
-                snprintf(
-                    buffer,
-                    size,
+
+            if (col->column_type == STATE_STRING) {
+                return format_alloc(
                     "%d",
                     column == REPORT_MIN
                         ? col->STRING.min_length
                         : col->STRING.max_length
                 );
             }
-            else {
-                format_numeric_extreme(
-                    buffer,
-                    size,
-                    col,
-                    column == REPORT_MIN
-                );
-            }
-            break;
+
+            return format_numeric_extreme(
+                col,
+                column == REPORT_MIN
+            );
 
         case REPORT_MEAN:
             if (col->column_type == STATE_NULL) {
-                snprintf(buffer, size, "N/A");
+                return format_alloc("N/A");
             }
-            else if (col->column_type == STATE_STRING) {
-                snprintf(
-                    buffer,
-                    size,
-                    "%.6f",
-                    col->STRING.mean_length
-                );
+
+            if (col->column_type == STATE_STRING) {
+                return format_alloc("%.6f", col->STRING.mean_length);
             }
-            else if (col->column_type == STATE_INT) {
-                format_integer_mean(
-                    buffer,
-                    size,
+
+            if (col->column_type == STATE_INT) {
+                return format_integer_mean(
                     col->INT.integer_sum,
                     col->STRING.valid_count
                 );
             }
-            else {
-                double mean = (
+
+            return format_alloc(
+                "%.6f",
+                (
                     int128_to_double(col->INT.integer_sum)
                     + col->DOUBLE.double_sum
-                ) / col->STRING.valid_count;
-
-                snprintf(buffer, size, "%.6f", mean);
-            }
-            break;
+                ) / col->STRING.valid_count
+            );
 
         case REPORT_POSITIVE:
             if (col->column_type == STATE_INT ||
                 col->column_type == STATE_DOUBLE) {
-                snprintf(buffer, size, "%d", col->DOUBLE.positive);
+                return format_alloc("%d", col->DOUBLE.positive);
             }
-            else {
-                snprintf(buffer, size, "N/A");
-            }
-            break;
+
+            return format_alloc("N/A");
 
         case REPORT_NEGATIVE:
             if (col->column_type == STATE_INT ||
                 col->column_type == STATE_DOUBLE) {
-                snprintf(buffer, size, "%d", col->DOUBLE.negative);
+                return format_alloc("%d", col->DOUBLE.negative);
             }
-            else {
-                snprintf(buffer, size, "N/A");
-            }
-            break;
+
+            return format_alloc("N/A");
     }
+
+    return NULL;
+}
+
+static const char* report_header(int column) {
+    switch (column) {
+        case REPORT_INDEX:    return "Index";
+        case REPORT_NAME:     return "Name";
+        case REPORT_TYPE:     return "Type";
+        case REPORT_NULLS:    return "Nulls";
+        case REPORT_VALID:    return "Valid";
+        case REPORT_MIN:      return "Min";
+        case REPORT_MAX:      return "Max";
+        case REPORT_MEAN:     return "Mean";
+        case REPORT_POSITIVE: return "Positive";
+        case REPORT_NEGATIVE: return "Negative";
+    }
+
+    return "Unknown";
 }
 
 int parse_args(int argc, char* argv[]){
@@ -817,14 +830,14 @@ void print_stats_output(const Table* table){
     }
 }
 
-static void print_report_border(
-    FILE* out,
-    const int* widths
-) {
+static void print_report_border(FILE* out, const int* widths) {
     fputc('+', out);
 
     for (int i = 0; i < REPORT_COLUMN_COUNT; i++) {
-        print_char_line(out, '-', widths[i] + 2, 0);
+        for (int j = 0; j < widths[i] + 2; j++) {
+            fputc('-', out);
+        }
+
         fputc('+', out);
     }
 
@@ -833,7 +846,7 @@ static void print_report_border(
 
 static void print_report_row(
     FILE* out,
-    const char* cells[REPORT_COLUMN_COUNT],
+    const char* const* cells,
     const int* widths
 ) {
     fputc('|', out);
@@ -850,59 +863,50 @@ static void print_report_row(
     fputc('\n', out);
 }
 
-int print_report_output(char* in_f, char* out_f, const Table* table){
+int print_report_output(char* in_f, char* out_f, const Table* table) {
     FILE* out = fopen(out_f, "w");
-    if (!out){
+
+    if (!out) {
         return FUNC_RETURN_RUNTIME_ERROR;
     }
 
-    const char* headers[REPORT_COLUMN_COUNT] = {
-        "Index",
-        "Name",
-        "Type",
-        "Nulls",
-        "Valid",
-        "Min",
-        "Max",
-        "Mean",
-        "Positive",
-        "Negative"
-    };
+    int* widths = calloc(REPORT_COLUMN_COUNT, sizeof(*widths));
+    if (!widths) {
+        fclose(out);
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
 
-    int widths[REPORT_COLUMN_COUNT];
+    int result = FUNC_RETURN_SUCCESS;
 
     for (int i = 0; i < REPORT_COLUMN_COUNT; i++) {
-        widths[i] = strlen(headers[i]);
-    }
-
-    int max_len = BASE_ARR_SIZE * 8192;
-    char* cell = malloc(max_len);
-    if (!cell){
-        return FUNC_RETURN_RUNTIME_ERROR;
+        widths[i] = (int)strlen(report_header(i));
     }
 
     for (int i = 0; i < table->column_count; i++) {
-        snprintf(cell, max_len, "%d", i);
-        widths[REPORT_INDEX] =
-            __max(widths[REPORT_INDEX], strlen(cell));
+        char* index = format_alloc("%d", i);
+
+        if (!index) {
+            result = FUNC_RETURN_RUNTIME_ERROR;
+            goto cleanup;
+        }
+
+        widths[REPORT_INDEX] = __max(
+            widths[REPORT_INDEX],
+            (int)strlen(index)
+        );
+
+        free(index);
 
         for (int j = REPORT_NAME; j < REPORT_COLUMN_COUNT; j++) {
-            if (j == REPORT_NAME) {
-                widths[j] = __max(
-                    widths[j],
-                    strlen(table->columns[i].name)
-                );
-                continue;
-            }
-            
-            format_report_cell(
-                cell,
-                sizeof(cell),
-                &table->columns[i],
-                j
-            );
+            char* cell = format_report_cell(&table->columns[i], j);
 
-            widths[j] = __max(widths[j], strlen(cell));
+            if (!cell) {
+                result = FUNC_RETURN_RUNTIME_ERROR;
+                goto cleanup;
+            }
+
+            widths[j] = __max(widths[j], (int)strlen(cell));
+            free(cell);
         }
     }
 
@@ -914,39 +918,62 @@ int print_report_output(char* in_f, char* out_f, const Table* table){
     fprintf(out, "Column summary:\n\n");
 
     print_report_border(out, widths);
-    print_report_row(out, headers, widths);
+
+    char** cells = calloc(REPORT_COLUMN_COUNT, sizeof(*cells));
+    if (!cells) {
+        result = FUNC_RETURN_RUNTIME_ERROR;
+        goto cleanup;
+    }
+
+    for (int i = 0; i < REPORT_COLUMN_COUNT; i++) {
+        cells[i] = (char*)report_header(i);
+    }
+
+    print_report_row(out, (const char* const*)cells, widths);
+
+    for (int i = 0; i < REPORT_COLUMN_COUNT; i++) {
+        cells[i] = NULL;
+    }
+
     print_report_border(out, widths);
 
     for (int i = 0; i < table->column_count; i++) {
-        char formatted[REPORT_COLUMN_COUNT][512];
-        const char* cells[REPORT_COLUMN_COUNT];
+        cells[REPORT_INDEX] = format_alloc("%d", i);
 
-        snprintf(
-            formatted[REPORT_INDEX],
-            sizeof(formatted[REPORT_INDEX]),
-            "%d",
-            i
-        );
-
-        cells[REPORT_INDEX] = formatted[REPORT_INDEX];
+        if (!cells[REPORT_INDEX]) {
+            result = FUNC_RETURN_RUNTIME_ERROR;
+            break;
+        }
 
         for (int j = REPORT_NAME; j < REPORT_COLUMN_COUNT; j++) {
-            if (j == REPORT_NAME) {
-                cells[j] = table->columns[i].name;
-            }
-            else {
-                format_report_cell(
-                    formatted[j],
-                    sizeof(formatted[j]),
-                    &table->columns[i],
-                    j
-                );
+            cells[j] = format_report_cell(&table->columns[i], j);
 
-                cells[j] = formatted[j];
+            if (!cells[j]) {
+                result = FUNC_RETURN_RUNTIME_ERROR;
+                break;
             }
         }
 
-        print_report_row(out, cells, widths);
+        if (result != FUNC_RETURN_SUCCESS) {
+            for (int j = 0; j < REPORT_COLUMN_COUNT; j++) {
+                free(cells[j]);
+                cells[j] = NULL;
+            }
+            break;
+        }
+
+        print_report_row(out, (const char* const*)cells, widths);
+
+        for (int j = 0; j < REPORT_COLUMN_COUNT; j++) {
+            free(cells[j]);
+            cells[j] = NULL;
+        }
+    }
+
+    free(cells);
+
+    if (result != FUNC_RETURN_SUCCESS) {
+        goto cleanup;
     }
 
     print_report_border(out, widths);
@@ -981,13 +1008,16 @@ int print_report_output(char* in_f, char* out_f, const Table* table){
         fprintf(out, "\n");
     }
 
+cleanup:
+    free(widths);
+
     if (ferror(out)) {
-        fclose(out);
-        return FUNC_RETURN_RUNTIME_ERROR;
+        result = FUNC_RETURN_RUNTIME_ERROR;
     }
 
-    fclose(out);
-    free_but_better(cell);
+    if (fclose(out) != 0) {
+        result = FUNC_RETURN_RUNTIME_ERROR;
+    }
 
-    return FUNC_RETURN_SUCCESS;
+    return result;
 }
