@@ -5,6 +5,20 @@
 
 #include <float.h>
 
+enum {
+    REPORT_INDEX,
+    REPORT_NAME,
+    REPORT_TYPE,
+    REPORT_NULLS,
+    REPORT_VALID,
+    REPORT_MIN,
+    REPORT_MAX,
+    REPORT_MEAN,
+    REPORT_POSITIVE,
+    REPORT_NEGATIVE,
+    REPORT_COLUMN_COUNT
+};
+
 typedef void (*CellHandler)(Table_Column* col, const char* field_buf, State field_t);
 // указатель на функцию, обрабатывающую текущее поле
 

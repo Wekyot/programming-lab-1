@@ -160,6 +160,158 @@ static void print_integer_mean(Int128 sum, int count) {
            (unsigned long long)fractional);
 }
 
+static void format_numeric_extreme(
+    char* buffer,
+    size_t size,
+    const Table_Column* col,
+    int find_min
+) {
+    int has_int = col->INT.min <= col->INT.max;
+    int has_double = col->DOUBLE.min <= col->DOUBLE.max;
+
+    int use_int;
+
+    if (!has_double) {
+        use_int = 1;
+    }
+    else if (!has_int) {
+        use_int = 0;
+    }
+    else {
+        long long int_value = find_min
+            ? col->INT.min
+            : col->INT.max;
+
+        double double_value = find_min
+            ? col->DOUBLE.min
+            : col->DOUBLE.max;
+
+        int comparison = compare_long_long_double(
+            int_value,
+            double_value
+        );
+
+        use_int = find_min
+            ? comparison <= 0
+            : comparison >= 0;
+    }
+
+    if (use_int) {
+        snprintf(
+            buffer,
+            size,
+            col->column_type == STATE_DOUBLE ? "%lld.000000" : "%lld",
+            find_min ? col->INT.min : col->INT.max
+        );
+    }
+    else {
+        snprintf(
+            buffer,
+            size,
+            "%.6f",
+            find_min ? col->DOUBLE.min : col->DOUBLE.max
+        );
+    }
+}
+
+static void format_report_cell(
+    char* buffer,
+    size_t size,
+    const Table_Column* col,
+    int column
+) {
+    switch (column) {
+        case REPORT_NAME:
+            snprintf(buffer, size, "%s", col->name);
+            break;
+
+        case REPORT_TYPE:
+            snprintf(buffer, size, "%s", state_to_str(col->column_type));
+            break;
+
+        case REPORT_NULLS:
+            snprintf(buffer, size, "%d", col->STRING.nulls);
+            break;
+
+        case REPORT_VALID:
+            snprintf(buffer, size, "%d", col->STRING.valid_count);
+            break;
+
+        case REPORT_MIN:
+        case REPORT_MAX:
+            if (col->column_type == STATE_NULL) {
+                snprintf(buffer, size, "N/A");
+            }
+            else if (col->column_type == STATE_STRING) {
+                snprintf(
+                    buffer,
+                    size,
+                    "%d",
+                    column == REPORT_MIN
+                        ? col->STRING.min_length
+                        : col->STRING.max_length
+                );
+            }
+            else {
+                format_numeric_extreme(
+                    buffer,
+                    size,
+                    col,
+                    column == REPORT_MIN
+                );
+            }
+            break;
+
+        case REPORT_MEAN:
+            if (col->column_type == STATE_NULL) {
+                snprintf(buffer, size, "N/A");
+            }
+            else if (col->column_type == STATE_STRING) {
+                snprintf(
+                    buffer,
+                    size,
+                    "%.6f",
+                    col->STRING.mean_length
+                );
+            }
+            else if (col->column_type == STATE_INT) {
+                print_integer_mean(
+                    col->INT.integer_sum,
+                    col->STRING.valid_count
+                );
+            }
+            else {
+                double mean = (
+                    int128_to_double(col->INT.integer_sum)
+                    + col->DOUBLE.double_sum
+                ) / col->STRING.valid_count;
+
+                snprintf(buffer, size, "%.6f", mean);
+            }
+            break;
+
+        case REPORT_POSITIVE:
+            if (col->column_type == STATE_INT ||
+                col->column_type == STATE_DOUBLE) {
+                snprintf(buffer, size, "%d", col->DOUBLE.positive);
+            }
+            else {
+                snprintf(buffer, size, "N/A");
+            }
+            break;
+
+        case REPORT_NEGATIVE:
+            if (col->column_type == STATE_INT ||
+                col->column_type == STATE_DOUBLE) {
+                snprintf(buffer, size, "%d", col->DOUBLE.negative);
+            }
+            else {
+                snprintf(buffer, size, "N/A");
+            }
+            break;
+    }
+}
+
 int parse_args(int argc, char* argv[]){
     if (argc < 2){
         fprintf(stderr, "Вы запустили команду без аргументов. Попробуйте csvstat --help\n");
@@ -617,87 +769,82 @@ void print_stats_output(const Table* table){
     }
 }
 
+static void print_report_border(
+    FILE* out,
+    const int* widths
+) {
+    fputc('+', out);
+
+    for (int i = 0; i < REPORT_COLUMN_COUNT; i++) {
+        print_char_line(out, '-', widths[i] + 2, 0);
+        fputc('+', out);
+    }
+
+    fputc('\n', out);
+}
+
+static void print_report_row(
+    FILE* out,
+    const char* cells[REPORT_COLUMN_COUNT],
+    const int* widths
+) {
+    fputc('|', out);
+
+    for (int i = 0; i < REPORT_COLUMN_COUNT; i++) {
+        if (i == REPORT_NAME || i == REPORT_TYPE) {
+            fprintf(out, " %-*s |", widths[i], cells[i]);
+        }
+        else {
+            fprintf(out, " %*s |", widths[i], cells[i]);
+        }
+    }
+
+    fputc('\n', out);
+}
+
 int print_report_output(char* in_f, char* out_f, const Table* table){
     FILE* out = fopen(out_f, "w");
     if (!out){
         return FUNC_RETURN_RUNTIME_ERROR;
     }
 
-    int column_widths[10] = {3, 13, 8, 8, 10, 9, 10, 9, 15, 15};
-    
-    column_widths[0] = __max(column_widths[0],len_of_int(table->column_count));
+    const char* headers[REPORT_COLUMN_COUNT] = {
+        "Index",
+        "Name",
+        "Type",
+        "Nulls",
+        "Valid",
+        "Min",
+        "Max",
+        "Mean",
+        "Positive",
+        "Negative"
+    };
 
+    int widths[REPORT_COLUMN_COUNT];
 
-    for (int i = 0;i < table->column_count;i++){
-        column_widths[1] = __max(column_widths[1], strlen(table->columns[i].name));
-
-        column_widths[3] = __max(column_widths[3], table->columns[i].STRING.nulls);
-
-        column_widths[4] = __max(column_widths[4], table->columns[i].STRING.valid_count);
-
-        column_widths[5] = __max(column_widths[5], len_of_int(( (int) table->columns[i].DOUBLE.min)) + 2);
-
-        column_widths[6] = __max(column_widths[6], len_of_int(( (int) table->columns[i].DOUBLE.max)) + 2);
-
-        column_widths[7] = __max(column_widths[7], len_of_int(( (int) table->columns[i].DOUBLE.mean)) + 2);
-
-        column_widths[8] = __max(column_widths[8], len_of_int(table->columns[i].DOUBLE.positive));
-
-        column_widths[9] = __max(column_widths[9], len_of_int(table->columns[i].DOUBLE.negative));
+    for (int i = 0; i < REPORT_COLUMN_COUNT; i++) {
+        widths[i] = strlen(headers[i]);
     }
 
-    int total_width = 11;
-    for (int i = 0;i < 10;i++){
-        total_width += column_widths[i];
-    }
+    char cell[256];
 
-    print_char_line(out, '=', total_width, 1);
-    print_char_line(out, ' ', total_width / 3, 0);
-    fprintf(out, "ОТЧЕТ ПО АНАЛИЗУ CSV-ТАБЛИЦЫ\n");
-    print_char_line(out, '=', total_width, 1);
-    fprintf(out, "Файл: %s\nВсего строк данных: %d\nВсего столбцов: %d\n", in_f, table->row_count, table->column_count);
-    print_char_line(out, '-', total_width, 1);
+    for (int i = 0; i < table->column_count; i++) {
+        snprintf(cell, sizeof(cell), "%d", i);
+        widths[REPORT_INDEX] =
+            __max(widths[REPORT_INDEX], strlen(cell));
 
-    fprintf(out, "\nСводная статистика по столбцам:\n\n");
-    print_table(out, column_widths);
-    fprintf(out, "| № | Имя столбца | Тип    | Пустые | Валидные | Минимум | Максимум | Среднее | Положительное | Отрицательное |\n");
+        for (int j = REPORT_NAME; j < REPORT_COLUMN_COUNT; j++) {
+            format_report_cell(
+                cell,
+                sizeof(cell),
+                &table->columns[i],
+                j
+            );
 
-    for (int i = 0; i < table->column_count; i++){
-        print_table(out, column_widths);
-        fprintf(out, "| %d | %-*s | %-*s", i, column_widths[1] - 2, table->columns[i].name, column_widths[2] - 1, state_to_str(table->columns[i].column_type));
-        fprintf(out, "| %*d | %*d | %*.6lf | %*.6lf | %*.6lf", column_widths[3] - 2, table->columns[i].STRING.nulls, column_widths[4] - 2, table->columns[i].STRING.valid_count, column_widths[5] - 2, table->columns[i].column_type == STATE_STRING ? table->columns[i].STRING.min_length : table->columns[i].DOUBLE.min, column_widths[6] - 2, table->columns[i].column_type == STATE_STRING ? table->columns[i].STRING.max_length : table->columns[i].DOUBLE.max,  column_widths[7] - 2, table->columns[i].column_type == STATE_STRING ? table->columns[i].STRING.mean_length : table->columns[i].DOUBLE.mean,  column_widths[8] - 2);
-        if (table->columns[i].column_type == STATE_INT || table->columns[i].column_type == STATE_DOUBLE){
-            fprintf(out, " | %*d | %*d |\n", column_widths[8] - 2, table->columns[i].DOUBLE.positive, column_widths[9] - 2, table->columns[i].DOUBLE.negative);
-        }
-        else {
-            fprintf(out, " | %*s | %*s |\n", column_widths[8] - 2, "N/A", column_widths[9] - 2, "N/A");
+            widths[j] = __max(widths[j], strlen(cell));
         }
     }
-    print_table(out, column_widths);
-    fprintf(out, "\n\nСпецифические метрики:\n");
-
-    for (int i = 0;i < table->column_count; i++){
-        fprintf(out, " - Столбец %d ",i);
-        print_column_name(out, table->columns[i].name);
-
-        switch (table->columns[i].column_type)
-        {
-        case STATE_NULL:
-            fprintf(out, "Количество пустых полей в столбце: %d\n", table->row_count);
-            break;
-        case STATE_INT:
-            fprintf(out, "Количество четных чисел в столбце: %d\n", table->columns[i].INT.even);
-            break;
-        case STATE_DOUBLE:
-            fprintf(out, "Количество целых чисел в столбце: %d\n", table->columns[i].DOUBLE.integer);
-            break;
-        case STATE_STRING:
-            fprintf(out, "Количество пустых строк в столбце: %d\n", table->columns[i].STRING.empty);
-            break;
-        }
-    }
-
-    print_char_line(out, '-', total_width, 1);
 
     fclose(out);
 
