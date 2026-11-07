@@ -4,46 +4,48 @@
 
 #include "args_work.h"
 
-void parse_args(int argc, char* argv[]){
+int parse_args(int argc, char* argv[]){
     if (argc < 2){
         fprintf(stderr, "Вы запустили команду без аргументов. Попробуйте csvstat --help\n");
-        exit(2);
+        return FUNC_RETURN_ARGS_ERROR;
     }
 
     if (!strncmp(argv[1],"--help",7)){
-        if (argc == 2)
+        if (argc == 2) {
             printf("Вы запросили справку программы csvstat.\nschema <csv_file_name> [options] выводит статистику по таблице: число строк данных, число столбцов, имя и тип каждого столбца в изначальном порядке.\nФормат вывода:\nrows <number>\ncolumns <number>\n<index> ""<name>"" <type>\n<index> ""<name>"" <type>\n...\n\nСпасибо, что пользуетесь нашей программой!\n\n");
+            return FUNC_RETURN_SUCCESS;
+        }
         else {
             fprintf(stderr,"Лишний аргумент(ы) при использовании команды --help\n");
-            exit(2);
+            return FUNC_RETURN_ARGS_ERROR;
         }
     }
     else if (!strncmp(argv[1],"schema",7)){
         if (argc == 3){
-            schema(argv[2]);
+            return schema(argv[2]);
         }
         else {
             fprintf(stderr,"Недостаточно аргументов при использовании команды schema\nОжидалось: csvstat schema <название файла>\n");
-            exit(2);
+            return FUNC_RETURN_ARGS_ERROR;
         }
     }
     else if (!strncmp(argv[1],"stats",6)){
         if (argc >= 3){
-            stats(argv[2]);
+            return stats(argv[2]);
         }
         else {
             fprintf(stderr,"Недостаточно аргументов при использовании команды stats\nОжидалось: csvstat stats <название файла>\n");
-            exit(2);
+            return FUNC_RETURN_ARGS_ERROR;
         }
 
     }
     else if (!strncmp(argv[1],"report",7)){
         if (argc >= 4){
-            report(argv[2],argv[3]);
+            return report(argv[2],argv[3]);
         }
         else {
             fprintf(stderr,"Недостаточно аргументов при использовании команды report\n");
-            exit(2);
+            return FUNC_RETURN_ARGS_ERROR;
         }
     }
     else {
@@ -62,51 +64,82 @@ void parse_args(int argc, char* argv[]){
         }
         else {
             fprintf(stderr, "Некорректный синтаксис: неизвестная команда.\n");
-            exit(2);
+            return FUNC_RETURN_ARGS_ERROR;
         }
 
         fprintf(stderr, "Некорректный синтаксис. Возможно вы имели в виду %s?\n",pretty_similar_command);
-        exit(2);
+        return FUNC_RETURN_ARGS_ERROR;
     }
 }
 
-void schema(char* f_name){
-    Table table = { .column_count = 0, .row_count = 0, .columns = my_malloc(sizeof(Table_Column) * 256) };
+int schema(char* f_name){
+    Table table = { .column_count = 0, .row_count = 0, .columns = malloc(sizeof(Table_Column) * 256) };
+    if (!table.columns){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
 
-    parse_csv_stream(f_name, &table, handle_cell_for_schema);
+    if (parse_csv_stream(f_name, &table, handle_cell_for_schema) != FUNC_RETURN_SUCCESS){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
 
     print_schema_output(&table);
     
     free_table_resources(&table);
 }
 
-void stats(char* f_name){
-    Table table = { .column_count = 0, .row_count = 0, .columns = my_malloc(sizeof(Table_Column) * 256) };
+int stats(char* f_name){
+    Table table = { .column_count = 0, .row_count = 0, .columns = malloc(sizeof(Table_Column) * 256) };
+    if (!table.columns){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
 
-    parse_csv_stream(f_name, &table, handle_cell_for_stats);
+    if (parse_csv_stream(f_name, &table, handle_cell_for_stats) != FUNC_RETURN_SUCCESS){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
 
     print_stats_output(&table);
     
     free_table_resources(&table);
 }
 
-void report(char* f_name, char* out_f_name){
-    Table table = { .column_count = 0, .row_count = 0, .columns = my_malloc(sizeof(Table_Column) * 256) };
+int report(char* f_name, char* out_f_name){
+    Table table = { .column_count = 0, .row_count = 0, .columns = malloc(sizeof(Table_Column) * 256) };
+    if (!table.columns){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
 
-    parse_csv_stream(f_name, &table, handle_cell_for_stats);
+    if (parse_csv_stream(f_name, &table, handle_cell_for_stats) != FUNC_RETURN_SUCCESS){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
 
-    print_report_output(f_name, out_f_name, &table);
+    if (print_report_output(f_name, out_f_name, &table) != FUNC_RETURN_SUCCESS){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
     
     free_table_resources(&table);
 }
 
-void parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
-    FILE* input = open_file(f_name,"r");
+int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
+    int return_reason = FUNC_RETURN_SUCCESS;
+
+    FILE* input = fopen(f_name,"r");
+    if (!input){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
     int cap = BASE_ARR_SIZE;
-    char* buffer = (char*) create_arr(cap);
-    
-    read_one_line(input, &buffer, &cap);
-    char* field_buf = (char*) create_arr(cap);
+    char* buffer = (char*) malloc(sizeof(char) * cap);
+    if (!buffer){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
+    if (read_one_line(input, &buffer, &cap) == FUNC_RETURN_RUNTIME_ERROR){
+        return_reason = FUNC_RETURN_RUNTIME_ERROR;
+        goto cleanup;
+    }
+    char* field_buf = (char*) malloc(sizeof(char) * cap);
+    if (!field_buf){
+        return_reason = FUNC_RETURN_RUNTIME_ERROR;
+        goto cleanup;
+    }
 
     const char* parser_ptr = buffer;
     while(1){
@@ -114,18 +147,25 @@ void parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell)
 
         if (strlen(field_buf) == 0){
             fprintf(stderr, "Пустое имя столбца %d\n",table->column_count + 1);
-            exit(1);
+            return_reason = FUNC_RETURN_RUNTIME_ERROR;
+            goto cleanup;
         }
 
         for (int i = 0; i < table->column_count; i++) {
             if (strcmp(table->columns[i].name, field_buf) == 0) {
-                // Если нашли совпадение — это дубликат, бросаем ошибку
                 fprintf(stderr, "Ошибка: Дублирование имени столбца \"%s\" (столбцы %d и %d)\n", field_buf, i + 1, table->column_count + 1);
-                abort();
+                return_reason = FUNC_RETURN_RUNTIME_ERROR;
+                goto cleanup;
             }
         }
 
         init_column_stats(&(table->columns[table->column_count]), field_buf);
+        if (!table->columns[table->column_count].name){
+            fprintf(stderr, "Ошибка выделения памяти при создании имени столбца\n");
+            return_reason = FUNC_RETURN_RUNTIME_ERROR;
+            goto cleanup;
+        }
+
         table->column_count++;
 
         if (reason == END_BY_LINE){
@@ -139,11 +179,22 @@ void parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell)
             table->columns = temp;
         }
         else {
-            abort();
+            fprintf(stderr, "Ошибка выделения памяти при создании таблицы\n");
+            return_reason = FUNC_RETURN_RUNTIME_ERROR;
+            goto cleanup;
         }
     }
 
-    while (read_one_line(input, &buffer, &cap)){
+    while (1){
+        int outer_reason = read_one_line(input, &buffer, &cap);
+        if (outer_reason == FUNC_RETURN_RUNTIME_ERROR){
+            return_reason = FUNC_RETURN_RUNTIME_ERROR;
+            goto cleanup;
+        }
+        else if (outer_reason == 0){
+            break;
+        }
+
         table->row_count++;
 
         parser_ptr = buffer;
@@ -155,16 +206,19 @@ void parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell)
 
             if (reason == END_BY_ERROR_OVERFLOW){
                 fprintf(stderr, "Переполнение буфера при парсинге поля \"%s\" в строке %d столбца %d\n", field_buf, table->row_count, column_id + 1);
-                exit(1);
+                return_reason = FUNC_RETURN_RUNTIME_ERROR;
+                goto cleanup;
             }
             else if (reason == END_BY_ERROR_QUOTE){
                 fprintf(stderr, "Ошибка в расстановке кавычек при парсинге поля \"%s\" в строке %d столбца %d\n", field_buf, table->row_count, column_id + 1);
-                exit(1);
+                return_reason = FUNC_RETURN_RUNTIME_ERROR;
+                goto cleanup;
             }
 
             if (column_id >= table->column_count){
                 fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d лишние столбцы.\n",f_name,column_id + 1);
-                abort();
+                return_reason = FUNC_RETURN_RUNTIME_ERROR;
+                goto cleanup;
             }
 
             if (cur_field_state == STATE_NULL){
@@ -181,13 +235,18 @@ void parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell)
 
         if (column_id < table->column_count){
                 fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d недостаточно столбцов.\n",f_name,column_id + 1);
-                abort();
-            }
+                return_reason = FUNC_RETURN_RUNTIME_ERROR;
+                goto cleanup;
+        }
     }
 
-    free(buffer);
-    free(field_buf);
-    close_file(input);
+cleanup:    
+
+    free_but_better(buffer);
+    free_but_better(field_buf);
+    fclose(input);
+
+    return return_reason;
 }
 
 void handle_cell_for_schema(Table_Column* col, const char* field_buf, State field_t){
@@ -286,7 +345,7 @@ void free_table_resources(Table* table){
     for (int i = 0;i < table->column_count;i++){
         free_but_better(table->columns[i].name);
     }
-    free(table->columns);
+    free_but_better(table->columns);
 }
 
 void print_schema_output(const Table* table){
@@ -294,8 +353,7 @@ void print_schema_output(const Table* table){
     for (int i = 0; i < table->column_count;i++){
         printf("%d ",i);
         print_column_name(stdout, table->columns[i].name);
-        fprintf_state(stdout, table->columns[i].column_type);
-        printf("\n");
+        printf("%s\n",state_to_str(table->columns[i].column_type));
     }
 }
 
@@ -305,8 +363,7 @@ void print_stats_output(const Table* table){
     for (int i = 0;i < table->column_count;i++){
         printf("column %d\nname ",i);
         print_column_name(stdout, table->columns[i].name);
-        printf("\ntype ");
-        fprintf_state(stdout, table->columns[i].column_type);
+        printf("\ntype %s",state_to_str(table->columns[i].column_type));
         printf("\nnulls %d\n",table->columns[i].STRING.nulls);
         switch (table->columns[i].column_type){
             case STATE_NULL:
@@ -329,8 +386,11 @@ void print_stats_output(const Table* table){
     }
 }
 
-void print_report_output(char* in_f, char* out_f, const Table* table){
-    FILE* out = open_file(out_f, "w");
+int print_report_output(char* in_f, char* out_f, const Table* table){
+    FILE* out = fopen(out_f, "w");
+    if (!out){
+        return FUNC_RETURN_RUNTIME_ERROR;
+    }
 
     int column_widths[10] = {3, 13, 8, 8, 10, 9, 10, 9, 15, 15};
     
@@ -408,5 +468,7 @@ void print_report_output(char* in_f, char* out_f, const Table* table){
 
     print_char_line(out, '-', total_width, 1);
 
-    close_file(out);
+    fclose(out);
+
+    return FUNC_RETURN_SUCCESS;
 }

@@ -5,11 +5,15 @@
 #include <errno.h>
 #include <math.h>
 
+enum {
+    FUNC_RETURN_SUCCESS,
+    FUNC_RETURN_RUNTIME_ERROR = 2,
+    FUNC_RETURN_ARGS_ERROR = 3
+};
+
 #define BASE_ARR_SIZE 128
 #define LEN_BLOCK 128
 
-FILE* open_file(const char* f_name, const char* mode);
-void* create_arr(size_t size);
 void check_cap(void** arr, int* cap, int len);
 void close_file(FILE* file);
 
@@ -26,4 +30,3 @@ void print_char_line(FILE* f, char c, int count, int need_enter);
 void print_table(FILE* f, const int* widths);
 
 char* state_to_str(State state);
-void* my_malloc(size_t size);

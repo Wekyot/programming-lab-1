@@ -9,44 +9,8 @@ FILE* open_file(const char* f_name, const char* mode){
         return res;
     }
     else {
-        printf("Файл \"%s\" не удалось открыть.\n",f_name);
-        // нужна обработка ошибок
-        abort();
-    }
-}
-
-void close_file(FILE* file){
-    if (file != NULL){
-        fclose(file);
-    }
-}
-
-void* create_arr(size_t size){
-    void* res = (void*) malloc(size);
-    if (!res){
-        abort();
-        // сделать обработку
-    }
-    else {
-        return res;
-    }
-}
-
-void check_cap(void** arr, int* cap, int len){
-    if (len > (*cap)){
-        //printf("oh no len is more than cap\n");
-
-        void* temp = (void*) realloc(*arr, (*cap) * 2);
-        (*cap) = (*cap) * 2;
-        //printf("new cap is %d\n",*cap);
-
-        if (!temp){
-            abort();
-            // сделать обработку
-        }
-        else {
-            *arr = (char*)temp;
-        }
+        fprintf(stderr, "Файл \"%s\" не удалось открыть.\n",f_name);
+        return NULL;
     }
 }
 
@@ -69,23 +33,6 @@ char* state_to_str(State state){
             
         case STATE_STRING:
             return "STRING";
-    }
-}
-
-void fprintf_state(FILE* file, State state){
-    switch (state){
-        case STATE_NULL:
-            fprintf(file, "NULL");
-            break;
-        case STATE_INT:
-            fprintf(file, "INT");
-            break;
-        case STATE_DOUBLE:
-            fprintf(file, "DOUBLE");
-            break;
-        case STATE_STRING:
-            fprintf(file, "STRING");
-            break;
     }
 }
 
@@ -157,12 +104,4 @@ void print_table(FILE* f, const int* widths){
         fprintf(f, "+");
     }
     fputc('\n',f);
-}
-
-void* my_malloc(size_t size){
-    void* result = malloc (size);
-    if (!result){
-        abort();
-    }
-    return result;
 }

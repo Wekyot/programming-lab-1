@@ -18,7 +18,15 @@ int main(int argc, char* argv[]){
     SetConsoleOutputCP(65001);
 #endif
 
-    parse_args(argc, argv);
+    int reason = parse_args(argc, argv);
 
-    return 0;
+    switch (reason)
+    {
+    case 0:
+        return 0;
+    case FUNC_RETURN_RUNTIME_ERROR:
+        return 1;
+    case FUNC_RETURN_ARGS_ERROR:
+        return 2;
+    }
 }

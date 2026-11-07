@@ -10,7 +10,16 @@ int read_one_line(FILE* input, char** buffer, int* cap){
     int len = 0;
 
     while(1){
-        check_cap((void**)buffer, cap, len + LEN_BLOCK);
+        if (len + LEN_BLOCK > *cap){
+            char* temp = realloc(*buffer, (*cap) * 2);
+            if (!temp){
+                return FUNC_RETURN_RUNTIME_ERROR;
+            }
+            else {
+                *buffer = temp;
+                (*cap) *= 2;
+            }
+        }
         if (fgets(*buffer + len, LEN_BLOCK, input) == NULL){
             return (len > 0);
         }
