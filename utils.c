@@ -158,3 +158,11 @@ void print_table(FILE* f, const int* widths){
     }
     fputc('\n',f);
 }
+
+void* my_malloc(size_t size){
+    void* result = malloc (size);
+    if (!result){
+        abort();
+    }
+    return result;
+}

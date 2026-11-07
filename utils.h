@@ -26,3 +26,4 @@ void print_char_line(FILE* f, char c, int count, int need_enter);
 void print_table(FILE* f, const int* widths);
 
 char* state_to_str(State state);
+void* my_malloc(size_t size);
