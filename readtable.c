@@ -21,6 +21,9 @@ int read_one_line(FILE* input, char** buffer, int* cap){
             }
         }
         if (fgets(*buffer + len, LEN_BLOCK, input) == NULL){
+            if (ferror(input)) {
+                return FUNC_RETURN_RUNTIME_ERROR;
+            }
             return (len > 0);
         }
 
@@ -70,7 +73,7 @@ State field_state(char* buf){
                 break;
 
             case STATE_INT:
-                if (isdigit(c)) {
+                if (isdigit((unsigned char) c)) {
                     result = STATE_INT;
                 } else if (c == '.') {
                     result = STATE_DOT;
@@ -211,8 +214,19 @@ int parse_one_field(const char** src, char** buf, int* cap, State* initial_state
         else {
             switch (c){
                 case ' ': case '\t':
-                    (*src)++;
-                    continue;
+                    const char* forward_ptr = *src + 1;
+                    while (*forward_ptr == ' ' || *forward_ptr == '\t') {
+                        forward_ptr++;
+                    }
+
+                    if (*forward_ptr != '\n' && *forward_ptr != '\0' && *forward_ptr != ','){
+                        (*buf)[cur_len] = '\0';
+                        return END_BY_ERROR_QUOTE;
+                    }
+                    else {
+                        (*src) = forward_ptr;
+                    }
+                    break;
 
                 case '\n': case '\0':
                     (*buf)[cur_len] = '\0';

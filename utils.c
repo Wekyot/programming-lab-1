@@ -33,6 +33,9 @@ char* state_to_str(State state){
             
         case STATE_STRING:
             return "STRING";
+
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -56,7 +59,7 @@ int is_valid_long_long(const char* buf){
 
     strtoll(buf, &endptr, 10);
 
-    if (errno == ERANGE){
+    if (errno == ERANGE || endptr == buf || *endptr != '\0'){
         return 0;
     }
     
@@ -70,7 +73,7 @@ int is_valid_double(const char* buf){
 
     double val = strtod(buf, &endptr);
 
-    if (errno == ERANGE && (val == HUGE_VAL || val == -HUGE_VAL)) {
+    if (errno == ERANGE && (val == HUGE_VAL || val == -HUGE_VAL) || endptr == buf || *endptr != '\0') {
         return 0;
     }
     
@@ -82,10 +85,23 @@ int is_valid_double(const char* buf){
 }
 
 int len_of_int(long long int n){
-    if (n != 0){
-        return floor(log10(abs(n))) + 1;
+    int len = 0;
+    unsigned long long value;
+
+    if (n < 0) {
+        len++;
+        value = 0ULL - (unsigned long long)n;
     }
-    else return 1;
+    else {
+        value = (unsigned long long)n;
+    }
+
+    do {
+        len++;
+        value /= 10;
+    } while (value != 0);
+
+    return len;
 }
 
 void print_char_line(FILE* f, char c, int count, int need_enter){

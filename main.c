@@ -22,7 +22,7 @@ int main(int argc, char* argv[]){
 
     switch (reason)
     {
-    case 0:
+    case FUNC_RETURN_SUCCESS:
         return 0;
     case FUNC_RETURN_RUNTIME_ERROR:
         return 1;

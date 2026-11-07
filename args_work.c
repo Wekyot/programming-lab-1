@@ -139,7 +139,8 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
         return_reason = FUNC_RETURN_RUNTIME_ERROR;
         goto cleanup;
     }
-    if (read_one_line(input, &buffer, &cap) == FUNC_RETURN_RUNTIME_ERROR){
+    if (read_one_line(input, &buffer, &cap) != 1){
+        fprintf(stderr, "Файл пуст или произошла ошибка чтения\n");
         return_reason = FUNC_RETURN_RUNTIME_ERROR;
         goto cleanup;
     }
@@ -154,7 +155,14 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
     while(1){
         int reason = parse_one_field(&parser_ptr, &field_buf, &field_cap, NULL);
 
-        if (reason == END_BY_ERROR_OVERFLOW || reason == END_BY_ERROR_QUOTE){
+        if (reason == END_BY_ERROR_OVERFLOW) {
+            fprintf(stderr, "Ошибка выделения памяти при парсинге заголовка\n");
+            return_reason = FUNC_RETURN_RUNTIME_ERROR;
+            goto cleanup;
+        }
+
+        if (reason == END_BY_ERROR_QUOTE) {
+            fprintf(stderr, "Ошибка расстановки кавычек в заголовке %d\n", table->column_count);
             return_reason = FUNC_RETURN_RUNTIME_ERROR;
             goto cleanup;
         }
@@ -167,7 +175,7 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
 
         for (int i = 0; i < table->column_count; i++) {
             if (strcmp(table->columns[i].name, field_buf) == 0) {
-                fprintf(stderr, "Ошибка: Дублирование имени столбца \"%s\" (столбцы %d и %d)\n", field_buf, i + 1, table->column_count + 1);
+                fprintf(stderr, "Ошибка: Дублирование имени столбца \"%s\" (столбцы %d и %d)\n", field_buf, i, table->column_count);
                 return_reason = FUNC_RETURN_RUNTIME_ERROR;
                 goto cleanup;
             }
@@ -219,18 +227,18 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
             int reason = parse_one_field(&parser_ptr, &field_buf, &field_cap, &cur_field_state);
 
             if (reason == END_BY_ERROR_OVERFLOW){
-                fprintf(stderr, "Ошибка выделения памяти при парсинге поля в строке %d столбца %d\n", table->row_count, column_id + 1);
+                fprintf(stderr, "Ошибка выделения памяти при парсинге поля в строке %d столбца %d\n", table->row_count, column_id);
                 return_reason = FUNC_RETURN_RUNTIME_ERROR;
                 goto cleanup;
             }
             else if (reason == END_BY_ERROR_QUOTE){
-                fprintf(stderr, "Ошибка в расстановке кавычек при парсинге поля \"%s\" в строке %d столбца %d\n", field_buf, table->row_count, column_id + 1);
+                fprintf(stderr, "Ошибка в расстановке кавычек при парсинге поля \"%s\" в строке %d столбца %d\n", field_buf, table->row_count, column_id);
                 return_reason = FUNC_RETURN_RUNTIME_ERROR;
                 goto cleanup;
             }
 
             if (column_id >= table->column_count){
-                fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d лишние столбцы.\n",f_name,column_id + 1);
+                fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d лишние столбцы.\n",f_name,column_id);
                 return_reason = FUNC_RETURN_RUNTIME_ERROR;
                 goto cleanup;
             }
@@ -248,7 +256,7 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
         }
 
         if (column_id < table->column_count){
-                fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d недостаточно столбцов.\n",f_name,column_id + 1);
+                fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: в строке %d недостаточно столбцов.\n",f_name,column_id);
                 return_reason = FUNC_RETURN_RUNTIME_ERROR;
                 goto cleanup;
         }
