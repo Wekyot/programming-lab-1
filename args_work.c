@@ -25,26 +25,26 @@ int parse_args(int argc, char* argv[]){
             return schema(argv[2]);
         }
         else {
-            fprintf(stderr,"Недостаточно аргументов при использовании команды schema\nОжидалось: csvstat schema <название файла>\n");
+            fprintf(stderr,"Недостаточно/слишком много аргументов при использовании команды schema\nОжидалось: csvstat schema <название файла>\n");
             return FUNC_RETURN_ARGS_ERROR;
         }
     }
     else if (!strncmp(argv[1],"stats",6)){
-        if (argc >= 3){
+        if (argc == 3){
             return stats(argv[2]);
         }
         else {
-            fprintf(stderr,"Недостаточно аргументов при использовании команды stats\nОжидалось: csvstat stats <название файла>\n");
+            fprintf(stderr,"Недостаточно/слишком много аргументов при использовании команды stats\nОжидалось: csvstat stats <название файла>\n");
             return FUNC_RETURN_ARGS_ERROR;
         }
 
     }
     else if (!strncmp(argv[1],"report",7)){
-        if (argc >= 4){
+        if (argc == 4){
             return report(argv[2],argv[3]);
         }
         else {
-            fprintf(stderr,"Недостаточно аргументов при использовании команды report\n");
+            fprintf(stderr,"Недостаточно/слишком много аргументов при использовании команды report\n");
             return FUNC_RETURN_ARGS_ERROR;
         }
     }
@@ -78,13 +78,14 @@ int schema(char* f_name){
         return FUNC_RETURN_RUNTIME_ERROR;
     }
 
-    if (parse_csv_stream(f_name, &table, handle_cell_for_schema) != FUNC_RETURN_SUCCESS){
-        return FUNC_RETURN_RUNTIME_ERROR;
-    }
+    int result = parse_csv_stream(f_name, &table, handle_cell_for_schema);
 
-    print_schema_output(&table);
+    if (result == FUNC_RETURN_SUCCESS){
+        print_schema_output(&table);
+    }
     
     free_table_resources(&table);
+    return result;
 }
 
 int stats(char* f_name){
@@ -93,13 +94,15 @@ int stats(char* f_name){
         return FUNC_RETURN_RUNTIME_ERROR;
     }
 
-    if (parse_csv_stream(f_name, &table, handle_cell_for_stats) != FUNC_RETURN_SUCCESS){
-        return FUNC_RETURN_RUNTIME_ERROR;
-    }
+    int result = parse_csv_stream(f_name, &table, handle_cell_for_stats);
 
-    print_stats_output(&table);
+    if (result == FUNC_RETURN_SUCCESS){
+        print_stats_output(&table);
+    }
     
     free_table_resources(&table);
+
+    return result;
 }
 
 int report(char* f_name, char* out_f_name){
@@ -108,34 +111,40 @@ int report(char* f_name, char* out_f_name){
         return FUNC_RETURN_RUNTIME_ERROR;
     }
 
-    if (parse_csv_stream(f_name, &table, handle_cell_for_stats) != FUNC_RETURN_SUCCESS){
-        return FUNC_RETURN_RUNTIME_ERROR;
-    }
+    int result = parse_csv_stream(f_name, &table, handle_cell_for_stats);
 
-    if (print_report_output(f_name, out_f_name, &table) != FUNC_RETURN_SUCCESS){
-        return FUNC_RETURN_RUNTIME_ERROR;
+    if (result == FUNC_RETURN_SUCCESS){
+        result = print_report_output(f_name, out_f_name, &table);
     }
     
     free_table_resources(&table);
+
+    return result;
 }
 
 int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
     int return_reason = FUNC_RETURN_SUCCESS;
 
+    char* buffer = NULL;
+    char* field_buf = NULL;
+
     FILE* input = fopen(f_name,"r");
     if (!input){
-        return FUNC_RETURN_RUNTIME_ERROR;
+        return_reason = FUNC_RETURN_RUNTIME_ERROR;
+        goto cleanup;
     }
     int cap = BASE_ARR_SIZE;
-    char* buffer = (char*) malloc(sizeof(char) * cap);
+    buffer = (char*) malloc(sizeof(char) * cap);
     if (!buffer){
-        return FUNC_RETURN_RUNTIME_ERROR;
+        return_reason = FUNC_RETURN_RUNTIME_ERROR;
+        goto cleanup;
     }
     if (read_one_line(input, &buffer, &cap) == FUNC_RETURN_RUNTIME_ERROR){
         return_reason = FUNC_RETURN_RUNTIME_ERROR;
         goto cleanup;
     }
-    char* field_buf = (char*) malloc(sizeof(char) * cap);
+    int field_cap = BASE_ARR_SIZE;
+    field_buf = (char*) malloc(sizeof(char) * field_cap);
     if (!field_buf){
         return_reason = FUNC_RETURN_RUNTIME_ERROR;
         goto cleanup;
@@ -143,7 +152,12 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
 
     const char* parser_ptr = buffer;
     while(1){
-        int reason = parse_one_field(&parser_ptr, field_buf, cap, NULL);
+        int reason = parse_one_field(&parser_ptr, &field_buf, &field_cap, NULL);
+
+        if (reason == END_BY_ERROR_OVERFLOW || reason == END_BY_ERROR_QUOTE){
+            return_reason = FUNC_RETURN_RUNTIME_ERROR;
+            goto cleanup;
+        }
 
         if (strlen(field_buf) == 0){
             fprintf(stderr, "Пустое имя столбца %d\n",table->column_count + 1);
@@ -202,10 +216,10 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
 
         while(1){
             State cur_field_state = STATE_NULL;
-            int reason = parse_one_field(&parser_ptr, field_buf, cap, &cur_field_state);
+            int reason = parse_one_field(&parser_ptr, &field_buf, &field_cap, &cur_field_state);
 
             if (reason == END_BY_ERROR_OVERFLOW){
-                fprintf(stderr, "Переполнение буфера при парсинге поля \"%s\" в строке %d столбца %d\n", field_buf, table->row_count, column_id + 1);
+                fprintf(stderr, "Ошибка выделения памяти при парсинге поля в строке %d столбца %d\n", table->row_count, column_id + 1);
                 return_reason = FUNC_RETURN_RUNTIME_ERROR;
                 goto cleanup;
             }
@@ -244,7 +258,8 @@ cleanup:
 
     free_but_better(buffer);
     free_but_better(field_buf);
-    fclose(input);
+    if (input)
+        fclose(input);
 
     return return_reason;
 }

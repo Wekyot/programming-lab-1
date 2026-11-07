@@ -51,4 +51,4 @@ typedef struct {
 
 int read_one_line(FILE* input, char** buffer, int* cap);
 State field_state(char* buf);
-int parse_one_field(const char** src, char* buf, size_t max_len, State* initial_state);
+int parse_one_field(const char** src, char** buf, int* cap, State* initial_state);

@@ -114,7 +114,7 @@ State field_state(char* buf){
     return result;
 }
 
-int parse_one_field(const char** src, char* buf, size_t max_len, State* initial_state){
+int parse_one_field(const char** src, char** buf, int* cap, State* initial_state){
     char c;
     int outer_quote_flag = 0;
 
@@ -132,22 +132,28 @@ int parse_one_field(const char** src, char* buf, size_t max_len, State* initial_
     while (1){
         c = **(src);
 
-        if ((size_t)cur_len + 1 >= max_len) {
-            buf[cur_len] = '\0';
-            return END_BY_ERROR_OVERFLOW; 
+        if (cur_len + 1 >= *cap) {
+            char* temp = realloc(*buf, (*cap) * 2);
+            if (!temp){
+                return END_BY_ERROR_OVERFLOW;
+            }
+            else {
+                (*buf) = temp;
+                (*cap) *= 2;
+            }
         }
 
         if (outer_quote_flag){
             switch (c){
                 case '\0': case '\n':
-                    buf[cur_len] = '\0';
+                    (*buf)[cur_len] = '\0';
                     return END_BY_ERROR_QUOTE;
                 
                 case '"':
                     char next_c = *(*src + 1);
 
                     if (next_c == '"'){
-                        buf[cur_len++] = '"';
+                        (*buf)[cur_len++] = '"';
                         (*src)+=2;
                         break;
                     }
@@ -161,7 +167,7 @@ int parse_one_field(const char** src, char* buf, size_t max_len, State* initial_
                     
                     switch (next_c){
                         case ',':
-                            buf[cur_len] = '\0';
+                            (*buf)[cur_len] = '\0';
                             *src = forward_ptr + 1;
 
                             if (initial_state){
@@ -176,7 +182,7 @@ int parse_one_field(const char** src, char* buf, size_t max_len, State* initial_
                             return END_BY_COMMA;
                         
                         case '\0': case '\n':
-                            buf[cur_len] = '\0';
+                            (*buf)[cur_len] = '\0';
                             *src = forward_ptr;
 
                             if (initial_state){
@@ -191,13 +197,13 @@ int parse_one_field(const char** src, char* buf, size_t max_len, State* initial_
                             return END_BY_LINE;
 
                         default:
-                            buf[cur_len] = '\0';
+                            (*buf)[cur_len] = '\0';
                             return END_BY_ERROR_QUOTE;
                     }
                     break;
 
                 default:
-                    buf[cur_len++] = c;
+                    (*buf)[cur_len++] = c;
                     (*src)++;
                     break;
             }
@@ -209,23 +215,23 @@ int parse_one_field(const char** src, char* buf, size_t max_len, State* initial_
                     continue;
 
                 case '\n': case '\0':
-                    buf[cur_len] = '\0';
+                    (*buf)[cur_len] = '\0';
                     if (c == '\n') {
                         (*src)++;
                     }
                     return END_BY_LINE;
 
                 case ',':
-                    buf[cur_len] = '\0';
+                    (*buf)[cur_len] = '\0';
                     (*src)++;
                     return END_BY_COMMA;
 
                 case '"':
-                    buf[cur_len] = '\0';
+                    (*buf)[cur_len] = '\0';
                     return END_BY_ERROR_QUOTE;
 
                 default:
-                    buf[cur_len++] = c;
+                    (*buf)[cur_len++] = c;
                     (*src)++;
                     break;
             }
