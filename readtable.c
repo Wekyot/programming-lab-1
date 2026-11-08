@@ -107,7 +107,7 @@ State field_state(char* buf){
     if (result == STATE_INT && !is_valid_long_long(buf)){
         result = STATE_STRING;
     }
-    else if (result == STATE_DOT){
+    else if (result == STATE_SIGN || result == STATE_DOT){
         result = STATE_STRING;
     }
     else if (result == STATE_DOUBLE && !is_valid_double(buf)){

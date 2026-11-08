@@ -502,6 +502,7 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
 
     FILE* input = fopen(f_name,"r");
     if (!input){
+        fprintf(stderr, "Файл не удалось открыть или он не найден\n");
         return_reason = FUNC_RETURN_RUNTIME_ERROR;
         goto cleanup;
     }
@@ -579,14 +580,37 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
         }
     }
 
+    int pending_empty_lines = 0;
+
     while (1){
         int outer_reason = read_one_line(input, &buffer, &cap);
+
         if (outer_reason == FUNC_RETURN_RUNTIME_ERROR){
             return_reason = FUNC_RETURN_RUNTIME_ERROR;
             goto cleanup;
         }
         else if (outer_reason == 0){
             break;
+        }
+
+        int is_empty = 1;
+        for (int i = 0; buffer[i] != '\0'; i++){
+            if (buffer[i] != '\n'){
+                is_empty = 0;
+                break;
+            }
+        }
+
+        if (is_empty){
+            pending_empty_lines++;
+            continue;
+        }
+
+        if (pending_empty_lines > 0){
+            fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: пустая строка перед строкой %d.\n", f_name, table->row_count + pending_empty_lines);
+
+            return_reason = FUNC_RETURN_RUNTIME_ERROR;
+            goto cleanup;
         }
 
         table->row_count++;
@@ -688,6 +712,10 @@ void handle_cell_for_stats(Table_Column* col, const char* field_buf, State field
                 ? (long double)strtoll(field_buf, NULL, 10)
                 : (long double)strtod(field_buf, NULL);
 
+            if (val == 0.0L) {
+                val = 0.0L;
+            }
+
             if (field_t == STATE_DOUBLE){
                 if (val > (*col).DOUBLE.max){
                     (*col).DOUBLE.max = val;
@@ -782,8 +810,11 @@ void print_stats_output(const Table* table){
     for (int i = 0;i < table->column_count;i++){
         printf("column %d\nname ",i);
         print_column_name(stdout, table->columns[i].name);
-        printf("\ntype %s",state_to_str(table->columns[i].column_type));
-        printf("\nnulls %d\n",table->columns[i].STRING.nulls);
+        printf("\ntype %s\n",state_to_str(table->columns[i].column_type));
+
+        if (table->columns[i].column_type != STATE_NULL)
+            printf("nulls %d\n",table->columns[i].STRING.nulls);
+
         switch (table->columns[i].column_type){
             case STATE_NULL:
                 printf("rows %d\n",table->row_count);
@@ -829,7 +860,8 @@ void print_stats_output(const Table* table){
                 printf("min_length %d\nmax_length %d\nmean_length %.6lf\nempty %d\n",table->columns[i].STRING.min_length, table->columns[i].STRING.max_length, table->columns[i].STRING.mean_length, table->columns[i].STRING.empty);
                 break;
         }
-        printf("\n");
+        if (i != table->column_count - 1)
+            printf("\n");
     }
 }
 
