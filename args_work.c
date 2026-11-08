@@ -601,35 +601,40 @@ int parse_csv_stream(const char* f_name, Table* table, CellHandler handle_cell){
 
     int pending_empty_lines = 0;
 
-    while (1){
+    while (1) {
         int outer_reason = read_one_line(input, &buffer, &cap);
 
-        if (outer_reason == FUNC_RETURN_RUNTIME_ERROR){
+        if (outer_reason == FUNC_RETURN_RUNTIME_ERROR) {
             return_reason = FUNC_RETURN_RUNTIME_ERROR;
             goto cleanup;
         }
-        else if (outer_reason == 0){
+        else if (outer_reason == 0) {
             break;
         }
 
-        int is_empty = 1;
-        for (int i = 0; buffer[i] != '\0'; i++){
-            if (buffer[i] != '\n'){
-                is_empty = 0;
-                break;
-            }
-        }
-
-        if (is_empty){
+        if (buffer[0] == '\n' && buffer[1] == '\0') {
             pending_empty_lines++;
             continue;
         }
 
-        if (pending_empty_lines > 0){
-            fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: пустая строка перед строкой %d.\n", f_name, table->row_count + pending_empty_lines);
+        if (pending_empty_lines > 0) {
+            if (table->column_count > 1) {
+                fprintf(stderr, "Ошибка в синтаксисе таблицы файла %s: недостаточно столбцов.\n", f_name);
 
-            return_reason = FUNC_RETURN_RUNTIME_ERROR;
-            goto cleanup;
+                return_reason = FUNC_RETURN_RUNTIME_ERROR;
+                goto cleanup;
+            }
+
+            for (int i = 0; i < pending_empty_lines; i++) {
+                table->row_count++;
+                handle_cell(
+                    &table->columns[0],
+                    "",
+                    STATE_NULL
+                );
+            }
+
+            pending_empty_lines = 0;
         }
 
         table->row_count++;
