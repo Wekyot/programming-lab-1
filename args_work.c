@@ -27,8 +27,13 @@ static char* format_alloc(const char* format, ...) {
         return NULL;
     }
 
-    vsnprintf(buffer, (size_t)length + 1, format, args_copy);
+    int result = vsnprintf(buffer, (size_t)length + 1, format, args_copy);
     va_end(args_copy);
+
+    if (result < 0) {
+        free(buffer);
+        return NULL;
+    }
 
     return buffer;
 }
@@ -430,7 +435,7 @@ int parse_args(int argc, char* argv[]){
     else if (!strncmp(argv[1],"report",7)){
         if (argc == 4){
             if (!strcmp(argv[2],argv[3])){
-                fprintf(stderr, "Названия входного и выходного файла совпадают. Это перезапишет входной файл. Мы с этим ничего не сделаем, живите в этом мире, который вы же и создали\n");
+                fprintf(stderr, "Названия входного и выходного файла совпадают. Это перезапишет входной файл. Принудительно завершаюсь\n");
             }
             return report(argv[2],argv[3]);
         }

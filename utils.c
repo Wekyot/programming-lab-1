@@ -3,17 +3,6 @@
 
 #include "utils.h"
 
-FILE* open_file(const char* f_name, const char* mode){
-    FILE* res = fopen(f_name, mode);
-    if (res){
-        return res;
-    }
-    else {
-        fprintf(stderr, "Файл \"%s\" не удалось открыть.\n",f_name);
-        return NULL;
-    }
-}
-
 void free_but_better(void* ptr){
     if (ptr){
         free(ptr);
@@ -104,22 +93,4 @@ int len_of_int(long long int n){
     } while (value != 0);
 
     return len;
-}
-
-void print_char_line(FILE* f, char c, int count, int need_enter){
-    for (int i = 0;i < count;i++)
-        fputc(c, f);
-
-    if (need_enter){
-        fputc('\n',f);
-    }
-}
-
-void print_table(FILE* f, const int* widths){
-    fputc('+',f);
-    for (int i = 0; i < 10;i++){
-        print_char_line(f, '-', widths[i], 0);
-        fprintf(f, "+");
-    }
-    fputc('\n',f);
 }

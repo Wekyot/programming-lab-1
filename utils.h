@@ -16,12 +16,8 @@ enum {
 #define BASE_ARR_SIZE 128
 #define LEN_BLOCK 128
 
-void check_cap(void** arr, int* cap, int len);
-void close_file(FILE* file);
-
 void free_but_better(void* ptr);
 
-void fprintf_state(FILE* file, State state);
 void print_column_name(FILE* stream, const char* name);
 
 int is_valid_double(const char* buf);
