@@ -153,6 +153,7 @@ int parse_one_field(const char** src, char** buf, int* cap, State* initial_state
                     return END_BY_ERROR_QUOTE;
                 
                 case '"':
+                    ;
                     char next_c = *(*src + 1);
 
                     if (next_c == '"'){
@@ -214,6 +215,7 @@ int parse_one_field(const char** src, char** buf, int* cap, State* initial_state
         else {
             switch (c){
                 case ' ': case '\t':
+                    ;
                     const char* forward_ptr = *src + 1;
                     while (*forward_ptr == ' ' || *forward_ptr == '\t') {
                         forward_ptr++;

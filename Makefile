@@ -8,7 +8,7 @@ endif
 
 # Компилятор и флаги
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c23
+CFLAGS = -Wall -Wextra -std=c17
 
 # Имя вашей готовой программы
 TARGET = csvstat

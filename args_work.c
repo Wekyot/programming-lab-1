@@ -722,6 +722,7 @@ void handle_cell_for_stats(Table_Column* col, const char* field_buf, State field
     char* end_ptr;
     switch (field_t){
         case STATE_INT:
+            ;
             long long int num = strtoll(field_buf, &end_ptr, 10);
             if (num < col->INT.min) {
                 col->INT.min = num;
@@ -737,6 +738,7 @@ void handle_cell_for_stats(Table_Column* col, const char* field_buf, State field
             // проваливаемся
 
         case STATE_DOUBLE:
+            ;
             long double val = field_t == STATE_INT
                 ? (long double)strtoll(field_buf, NULL, 10)
                 : (long double)strtod(field_buf, NULL);
@@ -772,6 +774,7 @@ void handle_cell_for_stats(Table_Column* col, const char* field_buf, State field
             // проваливаемся
 
         case STATE_STRING:
+            ;
             int cur_len = strlen(field_buf);
 
             if (cur_len > col->STRING.max_length){
