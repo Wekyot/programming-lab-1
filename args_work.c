@@ -892,8 +892,7 @@ void print_stats_output(const Table* table){
                 printf("min_length %d\nmax_length %d\nmean_length %.6lf\nempty %d\n",table->columns[i].STRING.min_length, table->columns[i].STRING.max_length, table->columns[i].STRING.mean_length, table->columns[i].STRING.empty);
                 break;
         }
-        if (i != table->column_count - 1)
-            printf("\n");
+        
     }
 }
 
